@@ -2,6 +2,7 @@
 using Sitecore;
 using Sitecore.Data;
 using System;
+using Sitecore.Data.Fields;
 using Sitecore.Data.Items;
 using System.Text.RegularExpressions;
 using System.Linq;
@@ -210,11 +211,11 @@ namespace SharedSource.RedirectModule
 
             if (redirectItem != null)
             {
-                var responseStatusCodeId = redirectItem.Fields[Constants.Fields.ResponseStatusCode];
-
-                if (responseStatusCodeId.HasValue && !string.IsNullOrEmpty(responseStatusCodeId.ToString()))
+                Field responseStatusCodeId = redirectItem.Fields[Constants.Fields.ResponseStatusCode];
+				
+                if (responseStatusCodeId != null && responseStatusCodeId.HasValue && !string.IsNullOrEmpty(responseStatusCodeId.ToString()))
                 {
-                    var responseStatusCodeItem = redirectItem.Database.GetItem(ID.Parse(responseStatusCodeId));
+                    var responseStatusCodeItem = redirectItem.Database.GetItem(ID.Parse(responseStatusCodeId.Value));
 
                     if (responseStatusCodeItem != null)
                     {

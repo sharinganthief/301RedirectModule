@@ -1,5 +1,6 @@
 ﻿using System.Web;
 using Sitecore;
+using Sitecore.Configuration;
 using Sitecore.Data;
 using System;
 using Sitecore.Data.Fields;
@@ -36,43 +37,53 @@ namespace SharedSource.RedirectModule
                 var db = Context.Database;
 
                 // First, we check for exact matches because those take priority over pattern matches.
-                if (Sitecore.Configuration.Settings.GetBoolSetting(Constants.Settings.RedirExactMatch, true))
+                if (Settings.GetBoolSetting(Constants.Settings.RedirExactMatch, true))
                 {
                     // Loop through the exact match entries to look for a match.
-                    foreach (Item possibleRedirect in GetRedirects(db, Constants.Templates.RedirectUrl, Constants.Templates.VersionedRedirectUrl, Sitecore.Configuration.Settings.GetSetting(Constants.Settings.QueryExactMatch)))
+                    foreach (Item possibleRedirect in GetRedirects(db, Constants.Templates.RedirectUrl, Constants.Templates.VersionedRedirectUrl, Settings.GetSetting(Constants.Settings.QueryExactMatch)))
                     {
-                        if (requestedUrl.Equals(possibleRedirect[Constants.Fields.RequestedUrl], StringComparison.OrdinalIgnoreCase) ||
-                             requestedPath.Equals(possibleRedirect[Constants.Fields.RequestedUrl], StringComparison.OrdinalIgnoreCase))
-                        {
-                            var redirectToItemId = possibleRedirect.Fields[Constants.Fields.RedirectToItem];
-                            var redirectToUrl = possibleRedirect.Fields[Constants.Fields.RedirectToUrl];
+	                    if (!requestedUrl.Equals(possibleRedirect[Constants.Fields.RequestedUrl],
+		                    StringComparison.OrdinalIgnoreCase) &&
+	                        !requestedPath.Equals(possibleRedirect[Constants.Fields.RequestedUrl],
+		                        StringComparison.OrdinalIgnoreCase))
+	                    {
+		                    continue;
+	                    }
 
-                            if (redirectToItemId.HasValue && !string.IsNullOrEmpty(redirectToItemId.ToString()))
-                            {
-                                var redirectToItem = db.GetItem(ID.Parse(redirectToItemId));
+	                    Field redirectToItemId = possibleRedirect.Fields[Constants.Fields.RedirectToItem];
+	                    Field redirectToUrl = possibleRedirect.Fields[Constants.Fields.RedirectToUrl];
 
-                                if (redirectToItem != null)
-                                {
-                                    var responseStatus = GetResponseStatus(possibleRedirect);
+	                    if (redirectToItemId.HasValue && !string.IsNullOrEmpty(redirectToItemId.ToString()))
+	                    {
+		                    Item redirectToItem = db.GetItem(ID.Parse(redirectToItemId));
 
-                                    SendResponse(redirectToItem, HttpContext.Current.Request.Url.Query, responseStatus, args);
-                                }
-                            }
-                            else if (redirectToUrl.HasValue && !string.IsNullOrEmpty(redirectToUrl.ToString()))
-                            {
-                                var responseStatus = GetResponseStatus(possibleRedirect);
+		                    if (redirectToItem != null)
+		                    {
+			                    ResponseStatus responseStatus = GetResponseStatus(possibleRedirect);
 
-                                SendResponse(redirectToUrl.Value, HttpContext.Current.Request.Url.Query, responseStatus, args);
-                            }
-                        }
+			                    SendResponse(redirectToItem, HttpContext.Current.Request.Url.Query, responseStatus, args);
+		                    }
+
+								
+		                    Log.Info(string.Format("Redirect item was null; {0}", redirectToItemId), typeof(Redirects));
+	                    }
+	                    else if (redirectToUrl.HasValue && !string.IsNullOrEmpty(redirectToUrl.ToString()))
+	                    {
+		                    ResponseStatus responseStatus = GetResponseStatus(possibleRedirect);
+
+		                    SendResponse(redirectToUrl.Value, HttpContext.Current.Request.Url.Query, responseStatus, args);
+	                    }
+
+							
+	                    Log.Info(string.Format("Redirect url was null or empty"), typeof(Redirects));
                     }
                 }
 
                 // Finally, we check for pattern matches because we didn't hit on an exact match.
-                if (Sitecore.Configuration.Settings.GetBoolSetting(Constants.Settings.RedirPatternMatch, true))
+                if (Settings.GetBoolSetting(Constants.Settings.RedirPatternMatch, true))
                 {
                     // Loop through the pattern match items to find a match
-                    foreach (Item possibleRedirectPattern in GetRedirects(db, Constants.Templates.RedirectPattern, Constants.Templates.VersionedRedirectPattern, Sitecore.Configuration.Settings.GetSetting(Constants.Settings.QueryExactMatch)))
+                    foreach (Item possibleRedirectPattern in GetRedirects(db, Constants.Templates.RedirectPattern, Constants.Templates.VersionedRedirectPattern, Settings.GetSetting(Constants.Settings.QueryExactMatch)))
                     {
                         var redirectPath = string.Empty;
                         if (Regex.IsMatch(requestedUrl, possibleRedirectPattern[Constants.Fields.RequestedExpression], RegexOptions.IgnoreCase))
@@ -114,7 +125,7 @@ namespace SharedSource.RedirectModule
         {
             if (db == null)
                 return false;
-            var redirectRoot = Sitecore.Configuration.Settings.GetSetting(Constants.Settings.RedirectRootNode);
+            var redirectRoot = Settings.GetSetting(Constants.Settings.RedirectRootNode);
             var redirectFolderRoot = db.SelectSingleItem(redirectRoot);
             if (redirectFolderRoot == null)
                 return false;
@@ -134,7 +145,7 @@ namespace SharedSource.RedirectModule
         {
             // Based off the config file, we can run different types of queries. 
             IEnumerable<Item> ret = null;
-            var redirectRoot = Sitecore.Configuration.Settings.GetSetting(Constants.Settings.RedirectRootNode);
+            var redirectRoot = Settings.GetSetting(Constants.Settings.RedirectRootNode);
             switch (queryType)
             {
                 case "fast": // fast query
@@ -182,9 +193,13 @@ namespace SharedSource.RedirectModule
 
         private static void SendResponse(string redirectToUrl, string queryString, ResponseStatus responseStatusCode, HttpRequestArgs args)
         {
+	        string location = redirectToUrl + queryString;
+	        string redirectMessage = string.Format("Redirect: [ Url: {0}; Status: {1} ]", location,
+		        responseStatusCode.Status);
+			Log.Info(redirectMessage, typeof(Redirects));
             args.Context.Response.Status = responseStatusCode.Status;
             args.Context.Response.StatusCode = responseStatusCode.StatusCode;
-            args.Context.Response.AddHeader("Location", redirectToUrl + queryString);
+            args.Context.Response.AddHeader("Location", location);
             args.Context.Response.End();
         }
 
